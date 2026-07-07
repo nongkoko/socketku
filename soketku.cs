@@ -15,27 +15,39 @@ internal class soketku : iSoketku
 {
     private Socket _socket = new System.Net.Sockets.Socket(SocketType.Stream, ProtocolType.Tcp);
     private string _connName;
-    private bool _headerMSBfirst;
+    private bool _headerBigEndian;
 
     string iSoketku.connName => _connName;
 
-    void iSoketku.setup(string connName, bool headerMSBfirst)
+    void iSoketku.setup(string connName, bool headerBigEndian)
     {
         _connName = connName;
-        _headerMSBfirst = headerMSBfirst;
+        _headerBigEndian = headerBigEndian;
     }
 
     void iSoketku.connect(string ipAddress, int port)
     {
         _socket.Connect(ipAddress, port);
+
+
         Task.Run(async () =>
         {
             var aBuffer = new byte[16384];
-            var jumlahByte = 0;
-            while ((jumlahByte = await _socket.ReceiveAsync(aBuffer)) > 0)
+            var jumlahByteRead = 0;
+            var panjangTotal = (ushort)0;
+            while ((jumlahByteRead = await _socket.ReceiveAsync(aBuffer)) > 0)
             {
-                var theString = System.Text.Encoding.UTF8.GetString(aBuffer, 0, jumlahByte);
-                //whatHappen?.Invoke(theString);
+                if (_headerBigEndian)
+                    panjangTotal = BinaryPrimitives.ReadUInt16BigEndian(aBuffer);
+                else
+                    panjangTotal = BinaryPrimitives.ReadUInt16LittleEndian(aBuffer);
+
+                if (jumlahByteRead > panjangTotal)
+                {
+                    var theString = System.Text.Encoding.UTF8.GetString(aBuffer, 0, jumlahByteRead);
+                    //whatHappen?.Invoke(theString);
+                }
+
             }
         });
     }
@@ -44,23 +56,24 @@ internal class soketku : iSoketku
     {
         var buffer = new byte[5000];
         var payload = System.Text.Encoding.UTF8.GetBytes(dataToSend);
-        var panjangPayload = (ushort)payload.Length;
+        var panjangAsHeader = (ushort)payload.Length;
         var totalByteToSend = 0;
         var writePointer = 0;
 
-        //menulis 2 byte 
-        if (_headerMSBfirst)
-            BinaryPrimitives.WriteUInt16BigEndian(buffer, panjangPayload);
+        //menulis 2 byte ke buffer
+        if (_headerBigEndian)
+            BinaryPrimitives.WriteUInt16BigEndian(buffer, panjangAsHeader);
         else
-            BinaryPrimitives.WriteUInt16LittleEndian(buffer, panjangPayload);
+            BinaryPrimitives.WriteUInt16LittleEndian(buffer, panjangAsHeader);
         totalByteToSend += 2;
         writePointer += 2;
 
-        //menulis payload
-        System.Buffer.BlockCopy(payload, 0, buffer, writePointer, panjangPayload);
-        totalByteToSend += panjangPayload;
-        writePointer += panjangPayload;
+        //menulis payload ke buffer
+        System.Buffer.BlockCopy(payload, 0, buffer, writePointer, panjangAsHeader);
+        totalByteToSend += panjangAsHeader;
+        writePointer += panjangAsHeader;
 
+        //mengirim buffer
         _socket.Send(buffer, 0, totalByteToSend, SocketFlags.None);
     }
 }
