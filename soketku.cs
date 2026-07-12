@@ -3,41 +3,42 @@ using System.Net.Sockets;
 
 namespace soketku;
 
+public interface iTCPheader
+{
+    bool headerMSBfirst { get; }
+    bool lengthIncludeHeader { get; }
+    bool lengthIncludeTailer { get; }
+    byte[]? trailer { get; }
+}
+
 public interface iSoketku
 {
-    void setup(string connName, bool headerMSBfirst);
     void connect(string ipAddress, int port);
     void send(string dataToSend);
-    string connName { get; }
+    string connName { get; set; }
+    iTCPheader tcpHeader { get; set; }
 }
 
 internal class soketku : iSoketku
 {
-    private Socket _socket = new System.Net.Sockets.Socket(SocketType.Stream, ProtocolType.Tcp);
-    private string _connName;
-    private bool _headerBigEndian;
+    private Socket _socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
 
-    string iSoketku.connName => _connName;
-
-    void iSoketku.setup(string connName, bool headerBigEndian)
-    {
-        _connName = connName;
-        _headerBigEndian = headerBigEndian;
-    }
+    string iSoketku.connName { get; set; }
+    iTCPheader iSoketku.tcpHeader { get; set; }
 
     void iSoketku.connect(string ipAddress, int port)
     {
         _socket.Connect(ipAddress, port);
 
-
         Task.Run(async () =>
         {
+            var thisAsiSoket = (iSoketku)this;
             var aBuffer = new byte[16384];
             var jumlahByteRead = 0;
             var panjangTotal = (ushort)0;
             while ((jumlahByteRead = await _socket.ReceiveAsync(aBuffer)) > 0)
             {
-                if (_headerBigEndian)
+                if (thisAsiSoket.tcpHeader.headerMSBfirst)
                     panjangTotal = BinaryPrimitives.ReadUInt16BigEndian(aBuffer);
                 else
                     panjangTotal = BinaryPrimitives.ReadUInt16LittleEndian(aBuffer);
@@ -59,9 +60,10 @@ internal class soketku : iSoketku
         var panjangAsHeader = (ushort)payload.Length;
         var totalByteToSend = 0;
         var writePointer = 0;
+        var thisAsiSoket = (iSoketku)this;
 
         //menulis 2 byte ke buffer
-        if (_headerBigEndian)
+        if (thisAsiSoket.tcpHeader.headerMSBfirst)
             BinaryPrimitives.WriteUInt16BigEndian(buffer, panjangAsHeader);
         else
             BinaryPrimitives.WriteUInt16LittleEndian(buffer, panjangAsHeader);
