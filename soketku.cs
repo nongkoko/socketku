@@ -1,5 +1,6 @@
 ﻿using System.Buffers.Binary;
 using System.Net.Sockets;
+using System.Text;
 
 namespace soketku;
 
@@ -18,6 +19,7 @@ public interface iSoketku
     Task listenAsync(int port);
     string connName { get; set; }
     iTCPheader tcpHeader { get; set; }
+    event Action<string, byte[]> dataReceived;
 }
 
 internal class soketku : iSoketku
@@ -25,6 +27,21 @@ internal class soketku : iSoketku
     private Socket _socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
     string iSoketku.connName { get; set; }
     iTCPheader iSoketku.tcpHeader { get; set; }
+    private Action<string, byte[]>? _dlgDataReceived = null;
+
+    event Action<string, byte[]> iSoketku.dataReceived
+    {
+        add
+        {
+            _dlgDataReceived += value;
+        }
+
+        remove
+        {
+            _dlgDataReceived -= value;
+        }
+    }
+
     void iSoketku.connect(string ipAddress, int port)
     {
         _socket.Connect(ipAddress, port);
@@ -32,34 +49,53 @@ internal class soketku : iSoketku
         //kalau sudah connect, maka jalankan task untuk menerima data
         Task.Run(async () =>
         {
-            var thisAsiSoket = (iSoketku)this;
+            var thisAsIsocketKu = (iSoketku)this;
             var mainBuffer = new byte[32767];
             var aBuffer = new byte[16384];
-            var jumlahByteRead = 0;
-            var panjangTotal = (ushort)0;
-            var thisAsISocket = (iSoketku)this;
-            var writePointer = 0; //turns out writePointer itu sama dengan jumlah data yang sudah diterima
+            var totalDataRead = 0;
+            var currentByteRead = 0;
 
-            while ((jumlahByteRead = await _socket.ReceiveAsync(aBuffer)) > 0)
+            while ((currentByteRead = await _socket.ReceiveAsync(aBuffer)) > 0)
             {
-                if (thisAsISocket.tcpHeader == null)
+                if (thisAsIsocketKu.tcpHeader == null)
                 {
-                    var theString = System.Text.Encoding.UTF8.GetString(aBuffer, 0, jumlahByteRead);
-                    //whatHappen?.Invoke(theString);
+                    var theString = System.Text.Encoding.UTF8.GetString(aBuffer, 0, currentByteRead);
+                    var theBytes = new byte[currentByteRead];
+                    Buffer.BlockCopy(aBuffer, 0, theBytes, 0, currentByteRead);
+                    _dlgDataReceived?.Invoke(theString, theBytes);
                     continue;
                 }
 
-                if (thisAsiSoket.tcpHeader.headerMSBfirst)
-                    panjangTotal = BinaryPrimitives.ReadUInt16BigEndian(aBuffer);
+                Buffer.BlockCopy(aBuffer, 0, mainBuffer, totalDataRead, currentByteRead);
+                totalDataRead += currentByteRead;
+
+                //get expected length
+                var dataLength = (ushort)0;
+                if (thisAsIsocketKu.tcpHeader.headerMSBfirst)
+                    dataLength = BinaryPrimitives.ReadUInt16BigEndian(aBuffer);
                 else
-                    panjangTotal = BinaryPrimitives.ReadUInt16LittleEndian(aBuffer);
+                    dataLength = BinaryPrimitives.ReadUInt16LittleEndian(aBuffer);
 
+                var oneBlockLength = 0 + dataLength;
 
+                //menentukan 1 block
+                if (!thisAsIsocketKu.tcpHeader.headerMSBfirst)
+                    oneBlockLength += 2;
 
-                if (jumlahByteRead > panjangTotal)
+                if (!thisAsIsocketKu.tcpHeader.lengthIncludeTailer)
+                    oneBlockLength += (ushort)thisAsIsocketKu.tcpHeader.trailer.Length;
+
+                if (totalDataRead >= oneBlockLength)
                 {
-                    var theString = System.Text.Encoding.UTF8.GetString(aBuffer, 0, jumlahByteRead);
-                    //whatHappen?.Invoke(theString);
+                    var payloadOnly = Encoding.UTF8.GetString(mainBuffer, 2, dataLength);
+                    var incomingDataAsIs = new byte[oneBlockLength];
+                    Buffer.BlockCopy(mainBuffer, 0, incomingDataAsIs, 0, oneBlockLength);
+
+                    _dlgDataReceived?.Invoke(payloadOnly, incomingDataAsIs);
+
+                    totalDataRead -= oneBlockLength;
+                    if (totalDataRead > 0)
+                        Buffer.BlockCopy(mainBuffer, oneBlockLength, mainBuffer, 0, totalDataRead);
                 }
 
             }
