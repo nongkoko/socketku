@@ -1,5 +1,6 @@
 ﻿using System.Buffers.Binary;
 using System.Net.Sockets;
+using System.Numerics;
 using System.Text;
 
 namespace soketku;
@@ -22,13 +23,21 @@ public interface iSoketku
     event Action<string, byte[]> dataReceived;
 }
 
+public class factory
+{
+    public static iSoketku newSoket()
+    {
+        return new soketku();
+    }
+}
+
 internal class soketku : iSoketku
 {
     private Socket _socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
     string iSoketku.connName { get; set; }
     iTCPheader iSoketku.tcpHeader { get; set; }
-    private Action<string, byte[]>? _dlgDataReceived = null;
-
+    private Action<string, byte[]>? _dlgDataReceived;
+    private bool _isConnected;
     event Action<string, byte[]> iSoketku.dataReceived
     {
         add
@@ -45,13 +54,13 @@ internal class soketku : iSoketku
     void iSoketku.connect(string ipAddress, int port)
     {
         _socket.Connect(ipAddress, port);
-
+        _isConnected = true;
         //kalau sudah connect, maka jalankan task untuk menerima data
         Task.Run(async () =>
         {
             var thisAsIsocketKu = (iSoketku)this;
-            var mainBuffer = new byte[32767];
-            var aBuffer = new byte[16384];
+            var mainBuffer = new byte[16384];
+            var aBuffer = new byte[5000];
             var totalDataRead = 0;
             var currentByteRead = 0;
 
@@ -59,7 +68,7 @@ internal class soketku : iSoketku
             {
                 if (thisAsIsocketKu.tcpHeader == null)
                 {
-                    var theString = System.Text.Encoding.UTF8.GetString(aBuffer, 0, currentByteRead);
+                    var theString = Encoding.UTF8.GetString(aBuffer, 0, currentByteRead);
                     var theBytes = new byte[currentByteRead];
                     Buffer.BlockCopy(aBuffer, 0, theBytes, 0, currentByteRead);
                     _dlgDataReceived?.Invoke(theString, theBytes);
@@ -79,7 +88,7 @@ internal class soketku : iSoketku
                 var oneBlockLength = 0 + dataLength;
 
                 //menentukan 1 block
-                if (!thisAsIsocketKu.tcpHeader.headerMSBfirst)
+                if (!thisAsIsocketKu.tcpHeader.lengthIncludeHeader)
                     oneBlockLength += 2;
 
                 if (!thisAsIsocketKu.tcpHeader.lengthIncludeTailer)
@@ -90,15 +99,23 @@ internal class soketku : iSoketku
                     var payloadOnly = Encoding.UTF8.GetString(mainBuffer, 2, dataLength);
                     var incomingDataAsIs = new byte[oneBlockLength];
                     Buffer.BlockCopy(mainBuffer, 0, incomingDataAsIs, 0, oneBlockLength);
-
-                    _dlgDataReceived?.Invoke(payloadOnly, incomingDataAsIs);
-
                     totalDataRead -= oneBlockLength;
                     if (totalDataRead > 0)
                         Buffer.BlockCopy(mainBuffer, oneBlockLength, mainBuffer, 0, totalDataRead);
-                }
 
+                    _dlgDataReceived?.Invoke(payloadOnly, incomingDataAsIs);
+                }
             }
+            try
+            {
+                _socket?.Close();
+                _socket?.Dispose();
+            }
+            catch (Exception _)
+            {
+            }
+            _socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+            _isConnected = false;
         });
     }
 
