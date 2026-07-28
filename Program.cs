@@ -2,25 +2,21 @@ using soketku;
 
 internal class Program
 {
-    private static void Main(string[] args)
+    private static async Task Main(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
         //builder.Services.AddHostedService<Worker>();
 
-        var aSocket = new soketku.soketku() as iSoketku;
-        Console.WriteLine("connecting");
-        aSocket.connect("localhost", 5678);
-        Console.WriteLine("end of connecting");
+        await foreach(var eachClient in factory.listenAh(9000))
+        {
+            eachClient.dataReceived += (connName, data) =>
+            {
+                Console.WriteLine($"data received from {connName}: {System.Text.Encoding.UTF8.GetString(data)}");
+            };
 
-        try
-        {
-            Console.WriteLine("ready");
-            aSocket.send("hello world");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex.Message);
-            throw;
+            Console.WriteLine("connected");
+            await Task.Delay(1000);
+            eachClient.send("hello");
         }
 
         var host = builder.Build();
