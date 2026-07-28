@@ -24,7 +24,6 @@ public interface iSoketku
 
 internal class soketku : iSoketku
 {
-    private iSoketku _asSoketKu => this;
     private Socket _socket;
     string iSoketku.connName { get; set; }
     iTCPheader iSoketku.tcpHeader { get; set; }
@@ -50,20 +49,18 @@ internal class soketku : iSoketku
     public soketku(TcpClient clientToHandle)
     {
         _socket = clientToHandle.Client;
-        _asSoketKu.startReadDataFromStream();
     }
 
     void iSoketku.connect(string ipAddress, int port)
     {
         _socket.Connect(ipAddress, port);
         _isConnected = true;
-        _asSoketKu.startReadDataFromStream();
     }
 
     void iSoketku.send(string dataToSend)
     {
         var thisAsiSoket = (iSoketku)this;
-        var payload = System.Text.Encoding.UTF8.GetBytes(dataToSend);
+        var payload = Encoding.UTF8.GetBytes(dataToSend);
 
         if (thisAsiSoket.tcpHeader == null)
         {
@@ -115,7 +112,7 @@ internal class soketku : iSoketku
             Buffer.BlockCopy(aBuffer, 0, mainBuffer, totalDataRead, currentByteRead);
             totalDataRead += currentByteRead;
 
-            while (totalDataRead > 0)
+            while (totalDataRead >= 2)
             {
                 //get expected length
                 var headerLength = (ushort)0;
