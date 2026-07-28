@@ -115,41 +115,44 @@ internal class soketku : iSoketku
             Buffer.BlockCopy(aBuffer, 0, mainBuffer, totalDataRead, currentByteRead);
             totalDataRead += currentByteRead;
 
-            //get expected length
-            var dataLength = (ushort)0;
-            if (thisAsIsocketKu.tcpHeader.headerMSBfirst)
-                dataLength = BinaryPrimitives.ReadUInt16BigEndian(mainBuffer);
-            else
-                dataLength = BinaryPrimitives.ReadUInt16LittleEndian(mainBuffer);
-
-            var oneBlockLength = 0 + dataLength;
-
-            //menentukan 1 block
-            if (!thisAsIsocketKu.tcpHeader.lengthIncludeHeader)
-                oneBlockLength += 2;
-
-            if (!thisAsIsocketKu.tcpHeader.lengthIncludeTailer)
-                oneBlockLength += (ushort)thisAsIsocketKu.tcpHeader.trailer.Length;
-
-            if (totalDataRead >= oneBlockLength)
+            while (totalDataRead > 0)
             {
-                var payloadOnly = Encoding.UTF8.GetString(mainBuffer, 2, dataLength);
+                //get expected length
+                var headerLength = (ushort)0;
+                if (thisAsIsocketKu.tcpHeader.headerMSBfirst)
+                    headerLength = BinaryPrimitives.ReadUInt16BigEndian(mainBuffer);
+                else
+                    headerLength = BinaryPrimitives.ReadUInt16LittleEndian(mainBuffer);
+
+                //menentukan 1 block
+                var oneBlockLength = 0 + headerLength;
+                if (!thisAsIsocketKu.tcpHeader.lengthIncludeHeader)
+                    oneBlockLength += 2;
+
+                if (!thisAsIsocketKu.tcpHeader.lengthIncludeTailer)
+                    oneBlockLength += (ushort)(thisAsIsocketKu.tcpHeader.trailer?.Length ?? 0);
+
+                while (totalDataRead < oneBlockLength)
+                {
+                    currentByteRead = await _socket.ReceiveAsync(aBuffer);
+                    Buffer.BlockCopy(aBuffer, 0, mainBuffer, totalDataRead, currentByteRead);
+                    totalDataRead += currentByteRead;
+                }
+
+                var payloadLength = headerLength;
+                if (thisAsIsocketKu.tcpHeader.lengthIncludeHeader)
+                    payloadLength -= 2;
+                if (thisAsIsocketKu.tcpHeader.lengthIncludeTailer)
+                    payloadLength -= (ushort)(thisAsIsocketKu.tcpHeader.trailer?.Length ?? 0);
+
+                var payloadOnly = Encoding.UTF8.GetString(mainBuffer, 2, payloadLength);
                 var incomingDataAsIs = new byte[oneBlockLength];
                 Buffer.BlockCopy(mainBuffer, 0, incomingDataAsIs, 0, oneBlockLength);
                 totalDataRead -= oneBlockLength;
                 if (totalDataRead > 0)
                     Buffer.BlockCopy(mainBuffer, oneBlockLength, mainBuffer, 0, totalDataRead);
-
                 _dlgDataReceived?.Invoke(payloadOnly, incomingDataAsIs);
             }
-        }
-        try
-        {
-            _socket?.Close();
-            _socket?.Dispose();
-        }
-        catch (Exception _)
-        {
         }
         _isConnected = false;
     }
