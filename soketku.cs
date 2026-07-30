@@ -16,6 +16,7 @@ public interface iSoketku
 {
     void connect(string ipAddress, int port);
     void send(string dataToSend);
+    void sendRaw(byte[] dataToSend);
     string connName { get; set; }
     iTCPheader tcpHeader { get; set; }
     event Action<string, byte[]> dataReceived;
@@ -152,5 +153,10 @@ internal class soketku : iSoketku
             }
         }
         _isConnected = false;
+    }
+
+    void iSoketku.sendRaw(byte[] dataToSend)
+    {
+        _socket.Send(dataToSend, 0, dataToSend.Length, SocketFlags.None);
     }
 }
