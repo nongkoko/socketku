@@ -20,6 +20,7 @@ public interface iSoketku
     string connName { get; set; }
     iTCPheader tcpHeader { get; set; }
     event Action<string, byte[]> dataReceived;
+    event Action<iSoketku> disconnected;
     Task startReadDataFromStream();
     bool isConnected { get; }
 }
@@ -29,10 +30,9 @@ internal class soketku : iSoketku
     private Socket _socket;
     string iSoketku.connName { get; set; }
     iTCPheader iSoketku.tcpHeader { get; set; }
-
     bool iSoketku.isConnected => _isConnected;
-
     private Action<string, byte[]>? _dlgDataReceived;
+    private Action<iSoketku> _dlgDisconnected;
     private bool _isConnected;
     event Action<string, byte[]> iSoketku.dataReceived
     {
@@ -44,6 +44,19 @@ internal class soketku : iSoketku
         remove
         {
             _dlgDataReceived -= value;
+        }
+    }
+
+    event Action<iSoketku> iSoketku.disconnected
+    {
+        add
+        {
+            _dlgDisconnected += value;
+        }
+
+        remove
+        {
+            _dlgDisconnected -= value;
         }
     }
 
@@ -157,6 +170,7 @@ internal class soketku : iSoketku
             }
         }
         _isConnected = false;
+        _dlgDisconnected?.Invoke(this);
     }
 
     void iSoketku.sendRaw(byte[] dataToSend)
