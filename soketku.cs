@@ -21,6 +21,7 @@ public interface iSoketku
     iTCPheader tcpHeader { get; set; }
     event Action<string, byte[]> dataReceived;
     Task startReadDataFromStream();
+    bool isConnected { get; }
 }
 
 internal class soketku : iSoketku
@@ -28,6 +29,9 @@ internal class soketku : iSoketku
     private Socket _socket;
     string iSoketku.connName { get; set; }
     iTCPheader iSoketku.tcpHeader { get; set; }
+
+    bool iSoketku.isConnected => _isConnected;
+
     private Action<string, byte[]>? _dlgDataReceived;
     private bool _isConnected;
     event Action<string, byte[]> iSoketku.dataReceived
