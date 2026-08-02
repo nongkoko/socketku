@@ -19,7 +19,7 @@ public interface iSoketku
     void sendRaw(byte[] dataToSend);
     string connName { get; set; }
     iTCPheader tcpHeader { get; set; }
-    event Action<string, byte[]> dataReceived;
+    event Action<iSoketku, string, byte[]> dataReceived;
     event Action<iSoketku> disconnected;
     Task startReadDataFromStream();
     bool isConnected { get; }
@@ -27,14 +27,15 @@ public interface iSoketku
 
 internal class soketku : iSoketku
 {
+    private iSoketku _asSoketKu => this;
     private Socket _socket;
     string iSoketku.connName { get; set; }
     iTCPheader iSoketku.tcpHeader { get; set; }
     bool iSoketku.isConnected => _isConnected;
-    private Action<string, byte[]>? _dlgDataReceived;
+    private Action<iSoketku, string, byte[]>? _dlgDataReceived;
     private Action<iSoketku> _dlgDisconnected;
     private bool _isConnected;
-    event Action<string, byte[]> iSoketku.dataReceived
+    event Action<iSoketku, string, byte[]> iSoketku.dataReceived
     {
         add
         {
@@ -77,10 +78,9 @@ internal class soketku : iSoketku
 
     void iSoketku.send(string dataToSend)
     {
-        var thisAsiSoket = (iSoketku)this;
         var payload = Encoding.UTF8.GetBytes(dataToSend);
 
-        if (thisAsiSoket.tcpHeader == null)
+        if (_asSoketKu.tcpHeader == null)
         {
             _socket.Send(payload, 0, payload.Length, SocketFlags.None);
             return;
@@ -92,7 +92,7 @@ internal class soketku : iSoketku
         var writePointer = 0;
 
         //menulis 2 byte ke buffer
-        if (thisAsiSoket.tcpHeader.headerMSBfirst)
+        if (_asSoketKu.tcpHeader.headerMSBfirst)
             BinaryPrimitives.WriteUInt16BigEndian(buffer, panjangAsHeader);
         else
             BinaryPrimitives.WriteUInt16LittleEndian(buffer, panjangAsHeader);
@@ -110,7 +110,6 @@ internal class soketku : iSoketku
 
     async Task iSoketku.startReadDataFromStream()
     {
-        var thisAsIsocketKu = (iSoketku)this;
         var mainBuffer = new byte[16384];
         var aBuffer = new byte[5000];
         var totalDataRead = 0;
@@ -118,12 +117,12 @@ internal class soketku : iSoketku
 
         while ((currentByteRead = await _socket.ReceiveAsync(aBuffer)) > 0)
         {
-            if (thisAsIsocketKu.tcpHeader == null)
+            if (_asSoketKu.tcpHeader == null)
             {
                 var theString = Encoding.UTF8.GetString(aBuffer, 0, currentByteRead);
                 var theBytes = new byte[currentByteRead];
                 Buffer.BlockCopy(aBuffer, 0, theBytes, 0, currentByteRead);
-                _dlgDataReceived?.Invoke(theString, theBytes);
+                _dlgDataReceived?.Invoke(_asSoketKu, theString, theBytes);
                 continue;
             }
 
@@ -134,18 +133,18 @@ internal class soketku : iSoketku
             {
                 //get expected length
                 var headerLength = (ushort)0;
-                if (thisAsIsocketKu.tcpHeader.headerMSBfirst)
+                if (_asSoketKu.tcpHeader.headerMSBfirst)
                     headerLength = BinaryPrimitives.ReadUInt16BigEndian(mainBuffer);
                 else
                     headerLength = BinaryPrimitives.ReadUInt16LittleEndian(mainBuffer);
 
                 //menentukan 1 block
                 var oneBlockLength = 0 + headerLength;
-                if (!thisAsIsocketKu.tcpHeader.lengthIncludeHeader)
+                if (!_asSoketKu.tcpHeader.lengthIncludeHeader)
                     oneBlockLength += 2;
 
-                if (!thisAsIsocketKu.tcpHeader.lengthIncludeTailer)
-                    oneBlockLength += (ushort)(thisAsIsocketKu.tcpHeader.trailer?.Length ?? 0);
+                if (!_asSoketKu.tcpHeader.lengthIncludeTailer)
+                    oneBlockLength += (ushort)(_asSoketKu.tcpHeader.trailer?.Length ?? 0);
 
                 while (totalDataRead < oneBlockLength)
                 {
@@ -155,10 +154,10 @@ internal class soketku : iSoketku
                 }
 
                 var payloadLength = headerLength;
-                if (thisAsIsocketKu.tcpHeader.lengthIncludeHeader)
+                if (_asSoketKu.tcpHeader.lengthIncludeHeader)
                     payloadLength -= 2;
-                if (thisAsIsocketKu.tcpHeader.lengthIncludeTailer)
-                    payloadLength -= (ushort)(thisAsIsocketKu.tcpHeader.trailer?.Length ?? 0);
+                if (_asSoketKu.tcpHeader.lengthIncludeTailer)
+                    payloadLength -= (ushort)(_asSoketKu.tcpHeader.trailer?.Length ?? 0);
 
                 var payloadOnly = Encoding.UTF8.GetString(mainBuffer, 2, payloadLength);
                 var incomingDataAsIs = new byte[oneBlockLength];
@@ -166,11 +165,11 @@ internal class soketku : iSoketku
                 totalDataRead -= oneBlockLength;
                 if (totalDataRead > 0)
                     Buffer.BlockCopy(mainBuffer, oneBlockLength, mainBuffer, 0, totalDataRead);
-                _dlgDataReceived?.Invoke(payloadOnly, incomingDataAsIs);
+                _dlgDataReceived?.Invoke(_asSoketKu, payloadOnly, incomingDataAsIs);
             }
         }
         _isConnected = false;
-        _dlgDisconnected?.Invoke(this);
+        _dlgDisconnected?.Invoke(_asSoketKu);
     }
 
     void iSoketku.sendRaw(byte[] dataToSend)

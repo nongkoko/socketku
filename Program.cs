@@ -10,9 +10,9 @@ internal class Program
         await foreach (var eachClient in factory.listenAh(9000))
         {
             eachClient.tcpHeader = new mTCPheader(true, false, true, null);
-            eachClient.dataReceived += (connName, data) =>
+            eachClient.dataReceived += (siapa, payload, data) =>
             {
-                Console.WriteLine($"data received from {connName}: {System.Text.Encoding.UTF8.GetString(data)}");
+                Console.WriteLine($"data received from {siapa}: {System.Text.Encoding.UTF8.GetString(data)}");
             };
             eachClient.startReadDataFromStream();
         }
